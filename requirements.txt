@@ -1,0 +1,15 @@
+flask
+alpaca-trade-api
+pandas
+matplotlib
+websockets
+plotly
+pytz
+python-dateutil
+numpy
+scipy
+flask-login
+flask-limiter
+flask-talisman
+python-dotenv
+bcrypt
