@@ -15,6 +15,34 @@ import pytz
 from alpaca_trade_api.rest import REST, TimeFrame
 from alpaca_trade_api.stream import Stream
 import json
+from collections import deque
+
+class RateLimitMonitor:
+    """Monitor and enforce API rate limits"""
+    
+    def __init__(self, limit_per_minute=200):
+        self.limit = limit_per_minute
+        self.requests = deque(maxlen=limit_per_minute * 2)  # Keep extra buffer
+    
+    def can_make_request(self) -> bool:
+        """Check if we can make another request without hitting rate limit"""
+        now = time.time()
+        # Remove requests older than 1 minute
+        while self.requests and now - self.requests[0] > 60:
+            self.requests.popleft()
+        
+        return len(self.requests) < self.limit
+    
+    def record_request(self):
+        """Record that we made a request"""
+        self.requests.append(time.time())
+    
+    def wait_if_needed(self):
+        """Wait if we're approaching rate limit"""
+        if not self.can_make_request():
+            wait_time = 60 - (time.time() - self.requests[0]) + 1
+            print(f"⏱️ Rate limit approaching, waiting {wait_time:.0f}s")
+            time.sleep(wait_time)
 
 class MarketClock:
     """
@@ -114,12 +142,17 @@ class DataStream:
         self.polling_seconds = max(60, min(300, polling_seconds))  # Clamp to 60-300s
         
         self.market_clock = MarketClock(api)
+        self.rate_limiter = RateLimitMonitor()
         self.running = False
         self.stream = None
         self.polling_thread = None
         
         # Track last bar to avoid duplicates
         self.last_bar_time = None
+        
+        # Connection retry settings
+        self.max_retries = 3
+        self.retry_delay = 30
         
         print(f"📡 DataStream initialized for {symbol}")
         print(f"   Mode: {'Websocket' if use_streaming else 'REST Polling'}")
@@ -151,47 +184,97 @@ class DataStream:
             self.polling_thread.join(timeout=5)
     
     def _start_websocket_stream(self):
-        """Start websocket streaming in background thread"""
+        """Start websocket streaming in background thread with proper connection management"""
         def run_stream():
-            try:
-                self.stream = Stream(
-                    self.api._key_id,
-                    self.api._secret_key,
-                    base_url=self.api._base_url
-                )
-                
-                @self.stream.on_bar(self.symbol)
-                async def on_minute_bar(bar):
-                    """Handle incoming minute bar from websocket"""
-                    try:
-                        bar_dict = {
-                            'time': bar.timestamp.isoformat(),
-                            'open': float(bar.open),
-                            'high': float(bar.high),
-                            'low': float(bar.low),
-                            'close': float(bar.close),
-                            'volume': int(bar.volume)
-                        }
-                        
-                        # Check for duplicate bars
-                        if self.last_bar_time != bar.timestamp:
-                            self.last_bar_time = bar.timestamp
-                            self.on_bar_callback(bar_dict)
-                        
-                    except Exception as e:
-                        print(f"❌ Error processing websocket bar: {e}")
-                
-                # Subscribe to minute bars
-                self.stream.subscribe_bars(self.symbol, 'minute')
-                
-                print(f"🚀 Websocket stream started for {self.symbol}")
-                self.stream.run()
-                
-            except Exception as e:
-                print(f"❌ Websocket stream failed: {e}")
-                print("🔄 Falling back to REST polling...")
-                self.use_streaming = False
-                self._start_polling()
+            retry_count = 0
+            
+            while retry_count < self.max_retries and self.running:
+                try:
+                    # Ensure any existing stream is properly closed
+                    if self.stream:
+                        try:
+                            self.stream.stop()
+                            time.sleep(2)  # Wait for cleanup
+                        except:
+                            pass
+                    
+                    self.stream = Stream(
+                        self.api._key_id,
+                        self.api._secret_key,
+                        base_url=self.api._base_url
+                    )
+                    
+                    async def on_minute_bar(bar):
+                        """Handle incoming minute bar from websocket"""
+                        try:
+                            # Handle timestamp conversion - could be datetime or int/float
+                            if hasattr(bar.timestamp, 'isoformat'):
+                                # Already a datetime object
+                                timestamp_str = bar.timestamp.isoformat()
+                            elif isinstance(bar.timestamp, (int, float)):
+                                # Unix timestamp - convert to datetime
+                                timestamp_dt = datetime.datetime.fromtimestamp(bar.timestamp, tz=pytz.UTC)
+                                timestamp_str = timestamp_dt.isoformat()
+                            else:
+                                # String timestamp
+                                timestamp_str = str(bar.timestamp)
+                            
+                            bar_dict = {
+                                'time': timestamp_str,
+                                'open': float(bar.open),
+                                'high': float(bar.high),
+                                'low': float(bar.low),
+                                'close': float(bar.close),
+                                'volume': int(bar.volume)
+                            }
+                            
+                            # Check for duplicate bars - normalize timestamp for comparison
+                            current_timestamp = bar.timestamp
+                            if isinstance(bar.timestamp, (int, float)):
+                                current_timestamp = datetime.datetime.fromtimestamp(bar.timestamp, tz=pytz.UTC)
+                            
+                            if self.last_bar_time != current_timestamp:
+                                self.last_bar_time = current_timestamp
+                                
+                                # Handle both sync and async callbacks
+                                if asyncio.iscoroutinefunction(self.on_bar_callback):
+                                    await self.on_bar_callback(bar_dict)
+                                else:
+                                    self.on_bar_callback(bar_dict)
+                            
+                        except Exception as e:
+                            print(f"❌ Error processing websocket bar: {e}")
+                    
+                    # Subscribe to minute bars - register handler directly
+                    self.stream.subscribe_bars(on_minute_bar, self.symbol)
+                    
+                    print(f"🚀 Websocket stream started for {self.symbol}")
+                    self.stream.run()
+                    
+                    # If we get here, stream ended normally
+                    break
+                    
+                except Exception as e:
+                    retry_count += 1
+                    error_msg = str(e).lower()
+                    
+                    if "connection limit" in error_msg or "limit exceeded" in error_msg:
+                        print(f"⚠️ Connection limit reached (attempt {retry_count}/{self.max_retries})")
+                        if retry_count < self.max_retries:
+                            wait_time = self.retry_delay * retry_count
+                            print(f"   Waiting {wait_time}s before retry...")
+                            time.sleep(wait_time)
+                        else:
+                            print("🔄 Max retries reached, falling back to REST polling...")
+                            self.use_streaming = False
+                            self._start_polling()
+                            break
+                    else:
+                        print(f"❌ Websocket stream failed: {e}")
+                        print("🔄 Falling back to REST polling...")
+                        self.use_streaming = False
+                        self._start_polling()
+                        break
         
         stream_thread = threading.Thread(target=run_stream, daemon=True)
         stream_thread.start()
@@ -207,6 +290,10 @@ class DataStream:
                     if not self._should_poll():
                         time.sleep(60)  # Check market status every minute
                         continue
+                    
+                    # Check rate limit before making request
+                    self.rate_limiter.wait_if_needed()
+                    self.rate_limiter.record_request()
                     
                     # Get the latest bar
                     end_time = datetime.datetime.now(pytz.UTC)
@@ -238,13 +325,28 @@ class DataStream:
                                 'volume': int(latest_bar['volume'])
                             }
                             
-                            self.on_bar_callback(bar_dict)
+                            # Handle async callback from sync context
+                            if asyncio.iscoroutinefunction(self.on_bar_callback):
+                                try:
+                                    loop = asyncio.new_event_loop()
+                                    asyncio.set_event_loop(loop)
+                                    loop.run_until_complete(self.on_bar_callback(bar_dict))
+                                    loop.close()
+                                except Exception as e:
+                                    print(f"❌ Error running async callback: {e}")
+                            else:
+                                self.on_bar_callback(bar_dict)
                     
                     time.sleep(self.polling_seconds)
                     
                 except Exception as e:
-                    print(f"❌ Error in polling loop: {e}")
-                    time.sleep(min(300, self.polling_seconds * 2))  # Back off on error
+                    error_msg = str(e).lower()
+                    if "rate limit" in error_msg or "too many requests" in error_msg:
+                        print(f"⏱️ Rate limit hit: {e}")
+                        time.sleep(60)  # Wait 1 minute before trying again
+                    else:
+                        print(f"❌ Error in polling loop: {e}")
+                        time.sleep(min(300, self.polling_seconds * 2))  # Back off on error
         
         self.polling_thread = threading.Thread(target=poll_bars, daemon=True)
         self.polling_thread.start()

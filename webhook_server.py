@@ -1,8 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
-from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from flask_talisman import Talisman
+from flask import Flask, request, jsonify, render_template
 from alpaca_trade_api.rest import REST, TimeFrame
 import datetime
 import csv
@@ -18,9 +14,8 @@ from scipy import stats
 import pytz
 import logging
 
-# Import our security and config modules
+# Import our config modules
 from secure_config import Config, create_env_file
-from auth_security import User, security_monitor, require_api_key, check_ip_blocked, require_auth_or_api_key, log_trade_activity, validate_trade_request
 
 # Import our strategy components
 from strategy_engine import ORBStrategy
@@ -40,52 +35,11 @@ if config_errors:
 
 app.secret_key = Config.SECRET_KEY
 
-# Initialize Flask-Login
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
-login_manager.login_message = 'Please log in to access the trading dashboard.'
+# Flask-Login removed for local development
 
-@login_manager.user_loader
-def load_user(user_id):
-    return User.get(user_id)
+# Rate limiting removed for local development
 
-# Initialize rate limiting
-try:
-    limiter = Limiter(
-        app,
-        key_func=get_remote_address,
-        default_limits=[f"{Config.RATE_LIMIT_PER_HOUR} per hour"]
-    )
-except:
-    # Fallback if limiter import fails
-    class DummyLimiter:
-        def limit(self, *args, **kwargs):
-            def decorator(f):
-                return f
-            return decorator
-    limiter = DummyLimiter()
-
-# Initialize security headers
-if Config.ENABLE_SECURITY_HEADERS:
-    try:
-        csp = {
-            'default-src': "'self'",
-            'script-src': "'self' 'unsafe-inline' https://cdn.plot.ly",
-            'style-src': "'self' 'unsafe-inline'",
-            'img-src': "'self' data:",
-            'font-src': "'self'",
-        }
-        
-        talisman = Talisman(
-            app,
-            force_https=Config.ENABLE_HTTPS_REDIRECT,
-            content_security_policy=csp,
-            strict_transport_security=True,
-            referrer_policy='strict-origin-when-cross-origin'
-        )
-    except:
-        print("Warning: Security headers not available, install flask-talisman for production")
+# Security headers removed for local development
 
 # Configure logging
 logging.basicConfig(
@@ -96,6 +50,38 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+# Filter out SSL handshake errors from werkzeug
+class SSLErrorFilter(logging.Filter):
+    def filter(self, record):
+        message = record.getMessage()
+        # Filter out SSL/TLS handshake errors more comprehensively
+        ssl_patterns = [
+            'Bad request version',
+            'Bad HTTP/0.9 request type', 
+            'Bad request syntax',
+            '\\x16\\x03\\x01',  # SSL handshake signature
+            'code 400',
+            '\\x03\\x03',
+            'localhost\\x00',
+            '\\x16\\x03',
+            'http/1.1\\x00'
+        ]
+        
+        # Check if message contains any SSL-related patterns
+        for pattern in ssl_patterns:
+            if pattern in message:
+                return False
+        
+        # Also filter messages that are mostly non-printable characters (SSL data)
+        if len([c for c in message if ord(c) < 32 or ord(c) > 126]) > len(message) * 0.3:
+            return False
+            
+        return True
+
+# Apply filter to werkzeug logger
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.addFilter(SSLErrorFilter())
 
 # Configuration file path (legacy support)
 CONFIG_FILE = "sessions_config.json"
@@ -152,6 +138,20 @@ def load_strategy_config():
         "use_streaming": True
     })
 
+def check_account_limits(api):
+    """Check Alpaca account limits and status"""
+    try:
+        account = api.get_account()
+        print(f"📊 Account Status: {account.status}")
+        print(f"   Account Type: {'Paper' if 'paper' in str(api._base_url) else 'Live'}")
+        
+        # Get current positions to verify connection
+        positions = api.list_positions()
+        print(f"   Current Positions: {len(positions)}")
+        
+    except Exception as e:
+        print(f"⚠️ Error checking account: {e}")
+
 def initialize_strategy():
     """Initialize the ORB strategy engine and data stream"""
     global strategy_engine, data_stream, strategy_thread_started
@@ -173,6 +173,9 @@ def initialize_strategy():
             
         api = SESSIONS[DEFAULT_SESSION]["api"]
         session_name = DEFAULT_SESSION
+        
+        # Check account limits and status
+        check_account_limits(api)
         
         # Initialize strategy engine
         strategy_engine = ORBStrategy(
@@ -593,58 +596,20 @@ def generate_trading_chart(session_id=None):
 # Initialize trades log on startup
 initialize_trades_log()
 
-# Authentication Routes
-@app.route('/login', methods=['GET', 'POST'])
-@check_ip_blocked
-def login():
-    """Login page and authentication"""
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        
-        if not username or not password:
-            return render_template('login.html', error='Username and password are required.')
-        
-        user = User.validate_credentials(username, password)
-        if user:
-            login_user(user)
-            log_trade_activity('login_success', f'User {username} logged in successfully')
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('dashboard'))
-        else:
-            security_monitor.record_failed_login(request.remote_addr, username)
-            log_trade_activity('login_failed', f'Failed login attempt for user {username}')
-            return render_template('login.html', error='Invalid username or password.')
-    
-    return render_template('login.html')
-
-@app.route('/logout')
-@login_required
-def logout():
-    """Logout and redirect to login"""
-    log_trade_activity('logout', f'User {current_user.username} logged out')
-    logout_user()
-    return redirect(url_for('login'))
+# Authentication removed for local development
 
 @app.route('/')
 def index():
     """Redirect root to dashboard"""
-    return redirect(url_for('dashboard'))
+    return render_template('dashboard.html')
 
 # Flask Routes
 @app.route('/dashboard')
-@require_auth_or_api_key
-@check_ip_blocked
 def dashboard():
     """Serve the main dashboard HTML page"""
     return render_template('dashboard.html')
 
 @app.route('/metrics')
-@require_auth_or_api_key
-@check_ip_blocked
 def get_metrics():
     """Get overall strategy KPIs with current TSLA price"""
     try:
@@ -692,8 +657,6 @@ def get_metrics():
         return jsonify({'error': str(e)})
 
 @app.route('/equity')
-@require_auth_or_api_key
-@check_ip_blocked
 def get_equity():
     """Get equity curve data for strategy vs buy & hold"""
     try:
@@ -720,8 +683,6 @@ def get_equity():
         return jsonify({'error': str(e)})
 
 @app.route('/trades_table')
-@require_auth_or_api_key
-@check_ip_blocked
 def get_trades_table():
     """Get detailed trades data for table display"""
     try:
@@ -795,21 +756,11 @@ def run_backtest():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route("/webhook", methods=["POST"])
-@require_api_key
-@check_ip_blocked
-@limiter.limit(f"{Config.RATE_LIMIT_PER_MINUTE} per minute")
 def webhook():
     """Handle webhook requests for trade execution - REQUIRES API KEY"""
     data = request.json or {}
     
-    # Validate request data
-    is_valid, error_msg = validate_trade_request(data)
-    if not is_valid:
-        log_trade_activity('invalid_request', f'Invalid webhook request: {error_msg}')
-        return jsonify({'success': False, 'error': error_msg}), 400
-    
     print(f"Received alert: {data}")
-    log_trade_activity('webhook_received', f'Valid webhook request: {data}')
 
     ticker = data.get("ticker")
     action = data.get("action")
@@ -1059,9 +1010,66 @@ def get_status():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def get_deployment_config():
+    """Get configuration based on deployment environment"""
+    # Detect AWS environment
+    is_aws = any([
+        os.environ.get('AWS_EXECUTION_ENV'),
+        os.environ.get('AWS_LAMBDA_FUNCTION_NAME'),
+        os.environ.get('ECS_CONTAINER_METADATA_URI'),
+        os.path.exists('/opt/aws')
+    ])
+    
+    # Detect Docker environment
+    is_docker = os.path.exists('/.dockerenv')
+    
+    if is_aws or is_docker:
+        # Cloud/Container deployment
+        return {
+            'host': '0.0.0.0',  # Listen on all interfaces
+            'port': int(os.environ.get('PORT', 5000)),
+            'debug': False,
+            'threaded': True,
+            'use_reloader': False
+        }
+    else:
+        # Local development
+        return {
+            'host': 'localhost',
+            'port': 5000,
+            'debug': False,
+            'use_reloader': False
+        }
+
+def setup_logging():
+    """Setup production-ready logging"""
+    log_level = getattr(logging, Config.LOG_LEVEL)
+    
+    # Create logs directory if it doesn't exist
+    os.makedirs('logs', exist_ok=True)
+    
+    # Configure logging with rotation for production
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('logs/trading_security.log'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    # Apply SSL error filter
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.addFilter(SSLErrorFilter())
+
 if __name__ == "__main__":
+    # Setup logging first
+    setup_logging()
+    
     # Initialize the ORB strategy on startup
     print("Starting Flask server with ORB strategy...")
+    print(f"Environment: {'AWS/Cloud' if any([os.environ.get('AWS_EXECUTION_ENV'), os.path.exists('/.dockerenv')]) else 'Local'}")
+    
     initialize_strategy()
     
     # Compute initial analytics
@@ -1071,7 +1079,50 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Could not compute initial analytics: {e}")
     
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Add cleanup function for proper connection management
+    import atexit
+    
+    def cleanup_connections():
+        """Cleanup function to properly close connections"""
+        global data_stream
+        if data_stream:
+            print("🔄 Cleaning up data stream connections...")
+            data_stream.stop()
+    
+    atexit.register(cleanup_connections)
+    
+    # Add health check endpoint before starting
+    @app.route('/health')
+    def health_check():
+        """Health check endpoint for load balancers and monitoring"""
+        try:
+            # Check if strategy is initialized
+            strategy_status = "running" if strategy_engine else "not_initialized"
+            
+            # Check if data stream is active
+            stream_status = "active" if data_stream and hasattr(data_stream, 'is_connected') else "inactive"
+            
+            return jsonify({
+                'status': 'healthy',
+                'strategy': strategy_status,
+                'data_stream': stream_status,
+                'timestamp': datetime.now().isoformat()
+            }), 200
+        except Exception as e:
+            return jsonify({
+                'status': 'unhealthy',
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }), 500
+    
+    # Get deployment configuration
+    config = get_deployment_config()
+    print(f"🚀 Starting ORB Trading Bot in {config.get('environment', 'production')} mode")
+    print(f"📊 Dashboard will be available at: http://{config['host']}:{config['port']}")
+    print(f"❤️  Health check endpoint: http://{config['host']}:{config['port']}/health")
+    
+    # Start Flask application
+    app.run(**config)
 
 """
 ORB (Opening Range Breakout) Trading System

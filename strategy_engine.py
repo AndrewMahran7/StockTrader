@@ -171,7 +171,7 @@ class ORBStrategy:
         except Exception as e:
             print(f"Error loading state: {e}")
     
-    def on_bar(self, bar: Dict[str, Any]):
+    async def on_bar(self, bar: Dict[str, Any]):
         """
         Process a completed 1-minute bar
         

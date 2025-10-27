@@ -1,7 +1,7 @@
 """
-Secure Configuration Management
-==============================
-Handles environment variables and secure config loading for production deployment.
+Configuration Management for AWS Deployment
+==========================================
+Handles environment variables and secure config loading for cloud and local deployment.
 """
 import os
 import secrets
@@ -12,43 +12,43 @@ from pathlib import Path
 load_dotenv()
 
 class Config:
-    """Secure configuration management class"""
+    """Configuration management for AWS and local deployment"""
     
     # Flask Security
     SECRET_KEY = os.getenv('SECRET_KEY', secrets.token_hex(32))
-    
-    # Admin Authentication
-    ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
-    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')  # Must be set in .env
     
     # Alpaca API Configuration
     ALPACA_API_KEY = os.getenv('ALPACA_API_KEY')
     ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY') 
     ALPACA_BASE_URL = os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
     
-    # API Security
-    WEBHOOK_API_KEY = os.getenv('WEBHOOK_API_KEY', secrets.token_urlsafe(32))
-    
-    # Production Settings
-    FLASK_ENV = os.getenv('FLASK_ENV', 'development')
-    ENABLE_HTTPS_REDIRECT = os.getenv('ENABLE_HTTPS_REDIRECT', 'true').lower() == 'true'
-    ENABLE_SECURITY_HEADERS = os.getenv('ENABLE_SECURITY_HEADERS', 'true').lower() == 'true'
-    
-    # Rate Limiting
-    RATE_LIMIT_PER_MINUTE = int(os.getenv('RATE_LIMIT_PER_MINUTE', 10))
-    RATE_LIMIT_PER_HOUR = int(os.getenv('RATE_LIMIT_PER_HOUR', 100))
-    
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-    ENABLE_TRADE_LOGGING = os.getenv('ENABLE_TRADE_LOGGING', 'true').lower() == 'true'
+    
+    # AWS Configuration
+    AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
+    
+    # Trading Configuration
+    TRADING_SYMBOL = os.getenv('TRADING_SYMBOL', 'TSLA')
+    POLLING_SECONDS = int(os.getenv('POLLING_SECONDS', 60))
+    USE_STREAMING = os.getenv('USE_STREAMING', 'true').lower() == 'true'
+    
+    # Environment Detection
+    @classmethod
+    def is_production(cls):
+        """Check if running in production environment"""
+        return any([
+            os.environ.get('AWS_EXECUTION_ENV'),
+            os.environ.get('AWS_LAMBDA_FUNCTION_NAME'),
+            os.environ.get('ECS_CONTAINER_METADATA_URI'),
+            os.path.exists('/.dockerenv'),
+            os.environ.get('FLASK_ENV') == 'production'
+        ])
     
     @classmethod
     def validate_config(cls):
         """Validate that all required configuration is present"""
         errors = []
-        
-        if not cls.ADMIN_PASSWORD:
-            errors.append("ADMIN_PASSWORD must be set in environment")
             
         if not cls.ALPACA_API_KEY:
             errors.append("ALPACA_API_KEY must be set in environment")
@@ -56,45 +56,58 @@ class Config:
         if not cls.ALPACA_SECRET_KEY:
             errors.append("ALPACA_SECRET_KEY must be set in environment")
             
-        if cls.FLASK_ENV == 'production' and cls.SECRET_KEY == 'dev':
-            errors.append("SECRET_KEY must be set for production")
-            
         return errors
     
     @classmethod
     def get_alpaca_config(cls):
-        """Get Alpaca API configuration in legacy format"""
+        """Get Alpaca API configuration for sessions"""
+        environment_name = "AWS_Trading" if cls.is_production() else "Local_Trading"
+        
         return {
             "sessions": {
                 "main": {
-                    "name": "Secure_Trading",
+                    "name": environment_name,
                     "api_key": cls.ALPACA_API_KEY,
                     "api_secret": cls.ALPACA_SECRET_KEY,
                     "base_url": cls.ALPACA_BASE_URL,
                     "enabled": True
                 }
             },
-            "default_session": "main"
+            "default_session": "main",
+            "strategy": {
+                "enabled": True,
+                "symbol": cls.TRADING_SYMBOL,
+                "polling_seconds": cls.POLLING_SECONDS,
+                "use_streaming": cls.USE_STREAMING
+            }
         }
 
 def create_env_file():
-    """Create .env file from template if it doesn't exist"""
+    """Create .env file template for AWS deployment"""
     env_file = Path('.env')
-    template_file = Path('.env.template')
     
-    if not env_file.exists() and template_file.exists():
-        # Copy template and generate secure defaults
-        with open(template_file, 'r') as template:
-            content = template.read()
-            
-        # Replace placeholders with secure defaults
-        content = content.replace('your-super-secret-flask-key-change-this', secrets.token_hex(32))
-        content = content.replace('your-webhook-api-key-for-external-access', secrets.token_urlsafe(32))
-        
-        with open(env_file, 'w') as env:
-            env.write(content)
-            
-        print("Created .env file from template. Please update with your actual credentials.")
+    if not env_file.exists():
+        template = """# Alpaca Trading API Configuration
+ALPACA_API_KEY=your_alpaca_api_key_here
+ALPACA_SECRET_KEY=your_alpaca_secret_key_here
+ALPACA_BASE_URL=https://paper-api.alpaca.markets
+
+# Flask Configuration  
+SECRET_KEY=your_secret_key_here
+LOG_LEVEL=INFO
+
+# Trading Configuration
+TRADING_SYMBOL=TSLA
+POLLING_SECONDS=60
+USE_STREAMING=true
+
+# AWS Configuration (optional)
+AWS_REGION=us-east-1
+FLASK_ENV=production
+"""
+        env_file.write_text(template)
+        print(f"✅ Created .env template at {env_file}")
+        print("📝 Please update the .env file with your actual Alpaca API credentials")
         return False
     
     return env_file.exists()
