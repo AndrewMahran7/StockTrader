@@ -1,0 +1,111 @@
+# 🔐 SECURITY - Never commit these files
+.env
+.env.local
+.env.production
+.env.staging
+sessions_config.json
+*session_config.json
+
+# 🔑 API Keys and Credentials
+*.key
+*.pem
+*.p12
+*.pfx
+config.json
+secrets.json
+Andrew_accessKeys.csv
+*accessKeys.csv
+
+# 📊 Trading Data - Contains sensitive trading information
+trades_log_*.csv
+*.log
+logs/
+trading_security.log
+
+# 🐍 Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 💾 Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# 📱 IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 🖼️ Generated files
+*.png
+*.jpg
+*.jpeg
+*.gif
+trading_chart_*.png
+
+# 📈 Analytics data (may contain sensitive trade data)
+analytics/*.csv
+analytics/*.json
+
+# 🔄 Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# 🌐 Web assets
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 📦 Package files
+*.tar.gz
+*.zip
+*.rar
+
+# 🔧 OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.dbAndrew_accessKeys.csv
+.env
+*.pem
+
+# AWS Credentials
+*.csv
+Andrew_accessKeys.csv
+
+# AWS Credentials
+*.csv
+Andrew_accessKeys.csv

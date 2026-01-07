@@ -1,0 +1,90 @@
+//@version=5
+strategy("15 Min ORB (6:30-6:45 Pacific, Long-Only, 50-EMA Filter, 2:1 R/R)", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// === Inputs ===
+enableShorts = false  // Permanently disabled - Long-only strategy
+
+// === Time Settings (Pacific Time) ===
+// Opening Range: 6:30 AM - 6:45 AM Pacific (15 minutes)
+startTime = timestamp("America/Los_Angeles", year, month, dayofmonth, 6, 30)
+endTime = timestamp("America/Los_Angeles", year, month, dayofmonth, 6, 45)
+
+// === Flags ===
+inOpeningRange = time >= startTime and time < endTime
+newDay = ta.change(time("D"))
+var bool tradeTaken = false
+var float openingHigh = na
+var float openingLow = na
+var bool rangeSet = false
+
+// === Reset on new day ===
+if newDay
+    openingHigh := na
+    openingLow := na
+    rangeSet := false
+    tradeTaken := false
+
+// === Build Opening Range ===
+if inOpeningRange
+    openingHigh := na(openingHigh) ? high : math.max(openingHigh, high)
+    openingLow := na(openingLow) ? low : math.min(openingLow, low)
+else if not rangeSet and not na(openingHigh) and not na(openingLow)
+    rangeSet := true
+
+// === Trend Filter ===
+ema50 = ta.ema(close, 50)
+trendIsUp = close > ema50
+
+// === Entry + TP/SL Setup ===
+rangeVal = openingHigh - openingLow
+
+// Long Setup (Long-Only Strategy)
+longEntry = openingHigh  // Entry: Break above opening range high
+longTP = longEntry + 2 * rangeVal  // Target: 2:1 reward-to-risk ratio
+longSL = openingLow  // Stop: At opening range low (tighter stop = better returns)
+longCondition = rangeSet and rangeVal > 0 and not tradeTaken and close > longEntry and trendIsUp
+longTPHit = strategy.position_size > 0 and close >= longTP
+longSLHit = strategy.position_size > 0 and close <= longSL
+
+// === Execute Long Trade ===
+if (longCondition)
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", from_entry="Long", stop=longSL, limit=longTP)
+    tradeTaken := true
+
+// === Mark trade as taken on TP or SL ===
+if (longTPHit or longSLHit)
+    tradeTaken := true
+
+// === Alerts (clean + no duplicate signals) ===
+if (longCondition)
+    strategy.entry("Long", strategy.long, alert_message='{"action":"buy","ticker":"{{ticker}}","price":{{close}}}')
+
+if (longTPHit or longSLHit)
+    strategy.exit("Exit Long", from_entry="Long", stop=longSL, limit=longTP, alert_message='{"action":"sell","ticker":"{{ticker}}","price":{{close}}}')
+
+
+// === Visuals ===
+plot(rangeSet ? openingHigh : na, title="Opening High (Entry)", color=color.new(color.blue, 0), linewidth=2)
+plot(rangeSet ? openingLow : na, title="Opening Low", color=color.new(color.blue, 0), linewidth=2)
+plot(ema50, title="50 EMA (Trend Filter)", color=color.orange, linewidth=2)
+
+// === Entry, TP, SL Lines (Extended to Show Levels) ===
+var entryLine = line.new(na, na, na, na, xloc=xloc.bar_index, extend=extend.right, color=color.orange, style=line.style_solid, width=2)
+var tpLine = line.new(na, na, na, na, xloc=xloc.bar_index, extend=extend.right, color=color.green, style=line.style_dashed, width=2)
+var slLine = line.new(na, na, na, na, xloc=xloc.bar_index, extend=extend.right, color=color.red, style=line.style_dotted, width=2)
+
+// Draw lines when position is entered
+if longCondition
+    line.set_xy1(entryLine, bar_index, longEntry)
+    line.set_xy2(entryLine, bar_index + 1, longEntry)
+    line.set_xy1(tpLine, bar_index, longTP)
+    line.set_xy2(tpLine, bar_index + 1, longTP)
+    line.set_xy1(slLine, bar_index, longSL)
+    line.set_xy2(slLine, bar_index + 1, longSL)
+
+// === Labels for Clarity ===
+if longCondition
+    label.new(bar_index, longEntry, "ENTRY: " + str.tostring(longEntry, "#.##"), style=label.style_label_left, color=color.orange, textcolor=color.white)
+    label.new(bar_index, longTP, "TP (2:1): " + str.tostring(longTP, "#.##"), style=label.style_label_left, color=color.green, textcolor=color.white)
+    label.new(bar_index, longSL, "SL: " + str.tostring(longSL, "#.##"), style=label.style_label_left, color=color.red, textcolor=color.white)

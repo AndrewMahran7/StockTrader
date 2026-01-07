@@ -1,0 +1,19 @@
+cat > .dockerignore <<'EOF'
+.git
+__pycache__/
+*.pyc
+*.pem
+*.csv
+*.log
+logs/
+analytics/
+backups/
+.trash/
+.env
+Andrew_accessKeys.csv
+trades_log_main.csv
+sessions_config.json
+strategy.pine
+README.md
+AWS_DEPLOYMENT.md
+EOF
