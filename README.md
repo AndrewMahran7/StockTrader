@@ -48,6 +48,8 @@ An automated trading bot implementing a **15-minute Opening Range Breakout (ORB)
 - Python 3.8+
 - Alpaca Markets account with API keys
 
+ssh amahran@100.64.180.1
+
 ### 1. Install system dependencies
 
 ```bash

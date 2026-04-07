@@ -64,12 +64,6 @@ def get_cached_tsla_price():
     
     return 395.94  # Final fallback
 
-# Flask-Login removed for local development
-
-# Rate limiting removed for local development
-
-# Security headers removed for local development
-
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL),
@@ -660,8 +654,6 @@ def generate_trading_chart(session_id=None):
 
 # Initialize trades log on startup
 initialize_trades_log()
-
-# Authentication removed for local development
 
 @app.route('/')
 def index():
