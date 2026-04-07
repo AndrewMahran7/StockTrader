@@ -12,7 +12,7 @@ from pathlib import Path
 load_dotenv()
 
 class Config:
-    """Configuration management for AWS and local deployment"""
+    """Configuration management for Raspberry Pi deployment"""
     
     # Flask Security
     SECRET_KEY = os.getenv('SECRET_KEY', secrets.token_hex(32))
@@ -25,9 +25,6 @@ class Config:
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     
-    # AWS Configuration
-    AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
-    
     # Trading Configuration
     TRADING_SYMBOL = os.getenv('TRADING_SYMBOL', 'TSLA')
     POLLING_SECONDS = int(os.getenv('POLLING_SECONDS', 60))
@@ -37,13 +34,7 @@ class Config:
     @classmethod
     def is_production(cls):
         """Check if running in production environment"""
-        return any([
-            os.environ.get('AWS_EXECUTION_ENV'),
-            os.environ.get('AWS_LAMBDA_FUNCTION_NAME'),
-            os.environ.get('ECS_CONTAINER_METADATA_URI'),
-            os.path.exists('/.dockerenv'),
-            os.environ.get('FLASK_ENV') == 'production'
-        ])
+        return os.environ.get('FLASK_ENV') == 'production'
     
     @classmethod
     def validate_config(cls):
@@ -61,7 +52,7 @@ class Config:
     @classmethod
     def get_alpaca_config(cls):
         """Get Alpaca API configuration for sessions"""
-        environment_name = "AWS_Trading" if cls.is_production() else "Local_Trading"
+        environment_name = "Pi_Trading" if cls.is_production() else "Local_Trading"
         
         return {
             "sessions": {
@@ -83,7 +74,7 @@ class Config:
         }
 
 def create_env_file():
-    """Create .env file template for AWS deployment"""
+    """Create .env file template for Raspberry Pi deployment"""
     env_file = Path('.env')
     
     if not env_file.exists():
@@ -101,8 +92,6 @@ TRADING_SYMBOL=TSLA
 POLLING_SECONDS=60
 USE_STREAMING=false
 
-# AWS Configuration (optional)
-AWS_REGION=us-east-1
 FLASK_ENV=production
 """
         env_file.write_text(template)

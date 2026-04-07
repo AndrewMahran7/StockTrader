@@ -1,12 +1,6 @@
-# 🚀 Algorithmic Trading System
+# 🚀 Algorithmic Trading System (Raspberry Pi)
 
-A comprehensive automated trading platform that implements a full Python-based **Opening Range Breakout (ORB)** strategy with live market execution through Alpaca Markets. This system features real-time data streaming, algorithmic strategy implementation, automated portfolio management, and a professional web dashboard for monitoring performance.
-
-## 🎯 Project Overview
-
-This trading system implements a **15-minute Opening Range Breakout (ORB)** strategy with EMA trend filtering, featuring automated trade execution, real-time monitoring, comprehensive performance analytics, and a professional web dashboard. The platform is designed for live trading with robust error handling, detailed logging, and real-time visualization.
-
-**Current Performance**: 23.01% return with 72.73% win rate across 11 completed trades, outperforming Tesla buy-and-hold by 7%.
+An automated trading bot implementing a **15-minute Opening Range Breakout (ORB)** strategy with live execution through Alpaca Markets, designed to run 24/7 on a Raspberry Pi via systemd.
 
 ## 🏗️ Architecture
 
@@ -23,236 +17,141 @@ This trading system implements a **15-minute Opening Range Breakout (ORB)** stra
                        └─────────────────┘
 ```
 
-## 🎨 Key Features
-
-### 📈 Trading Strategy
-- **Opening Range Breakout (ORB)** with 15-minute range identification (6:30-6:45 AM Pacific)
-- **EMA Trend Filter** using 50-period exponential moving average
-- **Dynamic Stop Loss & Take Profit** based on range size (2:1 R/R ratio)
-- **Pacific Time Zone** optimization for market open timing
-- **Single trade per day** logic to prevent overtrading
-- **Fractional share support** for precise position sizing
-
-### �️ Web Dashboard
-- **Real-time Performance Metrics** (P&L, Win Rate, Profit Factor, Drawdown)
-- **Interactive Equity Curve** with strategy vs. buy-and-hold comparison
-- **Live TSLA Price Tracking** with performance comparison
-- **Recent Trades Table** with detailed trade information
-- **Trade Distribution Analysis** and return histograms
-- **Professional Dark Theme** with responsive design
-
-### 🔧 Technical Implementation
-- **Pure Python Strategy Engine** (no TradingView dependency)
-- **Real-time Data Streaming** with WebSocket and REST API fallback
-- **Market Hours Detection** with automatic order type selection
-- **Extended Hours Trading** capability
-- **Comprehensive Error Handling** and logging
-- **JSON Configuration Management** for easy deployment
-- **CSV Analytics** with backward-compatible schema
-
-### 📊 Portfolio Management
-- **Automated Position Sizing** using available buying power
-- **Real-time Portfolio Monitoring** with REST API endpoints
-- **Advanced Trade Logging** with CSV export and JSON analytics
-- **Performance Visualization** with Plotly charts
-- **Account Status Monitoring** including day trade tracking
-
-## 🛠️ Technology Stack
-
-- **Backend**: Python 3.x, Flask
-- **Trading API**: Alpaca Markets REST API & WebSocket
-- **Strategy Engine**: Pure Python (ORBStrategy class)
-- **Data Processing**: pandas, numpy
-- **Visualization**: Plotly.js (web), matplotlib (charts)
-- **Configuration**: JSON
-- **Logging**: CSV with enhanced schema + JSON analytics
-- **Frontend**: HTML5, CSS3, JavaScript with real-time updates
-
 ## 📁 Project Structure
 
 ```
-├── webhook_server.py          # Main Flask application with API endpoints
+├── webhook_server.py          # Main entry point (Flask + strategy)
 ├── strategy_engine.py         # ORB strategy implementation
-├── data_stream.py            # Real-time data streaming & market clock
+├── data_stream.py             # Real-time data streaming & market clock
+├── backup_data_provider.py    # Yahoo Finance / web scraping fallback
+├── data_cache.py              # Price caching to reduce API calls
+├── secure_config.py           # Environment variable management
+├── auth_security.py           # Authentication & rate limiting
+├── .env                       # API keys and config (create from .env.template)
+├── .env.template              # Template for .env file
+├── state.json                 # Strategy state persistence
+├── tsla_price_cache.json      # Price cache
+├── requirements.txt           # Python dependencies
 ├── templates/
-│   └── dashboard.html        # Professional web dashboard
-├── analytics/
-│   ├── summary.json          # Performance metrics
-│   ├── equity_curve.json     # Equity curve data
-│   └── trades_detailed.csv   # Enhanced trade logs
-├── sessions_config.json      # API configuration
-├── trades_log_main.csv       # Main trade execution log
-├── requirements.txt          # Python dependencies
-└── README.md                 # This documentation
+│   ├── dashboard.html         # Web dashboard
+│   └── login.html             # Login page
+├── analytics/                 # Generated analytics data
+├── logs/                      # Application logs
+└── restart-bot.sh             # Manual restart script
 ```
 
-## 🚀 Quick Start
+## 🚀 Raspberry Pi Setup
 
-### What This System Does
+### Prerequisites
 
-This automated trading system:
-
-1. **Monitors market opening** at 6:30 AM Pacific Time
-2. **Identifies the 15-minute opening range** (6:30-6:45 AM)
-3. **Waits for breakouts** above/below the opening range
-4. **Executes trades automatically** when conditions are met
-5. **Manages risk** with automatic stop-loss and take-profit orders
-6. **Tracks performance** in real-time via web dashboard
-7. **Logs all activity** for analysis and tax reporting
-
-### Live Results
-
-- **Starting Capital**: $1,200
-- **Current Value**: $1,476.15
-- **Total Return**: +23.01%
-- **Tesla Buy & Hold**: +15.97%
-- **Outperformance**: +7.04%
-- **Win Rate**: 72.73%
-- **Total Trades**: 11 completed
-
-### Access Your Dashboard
-
-Once running, visit `http://localhost:5000/dashboard` to see:
-- Real-time performance metrics
-- Interactive equity curve
-- Recent trades table
-- Current Tesla price tracking
-- Trade distribution analysis
-
-## 🔧 System Requirements
-
-- Python 3.8 or higher
+- Raspberry Pi (3B+ or newer recommended) running Raspberry Pi OS
+- Python 3.8+
 - Alpaca Markets account with API keys
-- Windows/Mac/Linux compatible
-- Internet connection for real-time data
-- Web browser for dashboard access
 
-## 📡 Web Dashboard Features
+### 1. Install system dependencies
 
-### Real-Time Monitoring
-```
-http://localhost:5000/dashboard
-```
-
-The dashboard provides:
-- **Performance Metrics**: P&L, Win Rate, Profit Factor, Max Drawdown, Sharpe Ratio
-- **TSLA Price Tracker**: Live Tesla price with performance comparison
-- **Equity Curve**: Interactive chart comparing strategy vs. buy-and-hold
-- **Trades Table**: Recent trades with detailed information
-- **Returns Analysis**: Trade distribution histogram
-
-### API Endpoints
 ```bash
-# Main dashboard
-GET /dashboard
-
-# Performance metrics
-GET /metrics
-
-# Equity curve data
-GET /equity
-
-# Recent trades
-GET /trades_table
-
-# Historical backtest
-POST /backtest
+sudo apt-get update
+sudo apt-get install -y python3-pip python3-venv libxml2-dev libxslt-dev libfreetype6-dev libpng-dev
 ```
 
-## 📊 Trading Strategy Details
+### 2. Clone and set up
 
-### Opening Range Breakout Logic
-```python
-# 15-minute opening range (6:30 AM - 6:45 AM Pacific)
-self.market_open = datetime.time(6, 30)  # Pacific Time
-self.range_end = datetime.time(6, 45)    # Pacific Time
-
-# Entry conditions
-long_entry = opening_high + 0.01  # Breakout above range
-short_entry = opening_low - 0.01  # Breakout below range
-
-# EMA trend filter
-trend_up = current_price > ema_50
-trend_down = current_price < ema_50
-
-# Risk management
-take_profit = entry_price + (2 * range_size)  # 2:1 reward ratio
-stop_loss = opening_range_opposite_level      # Range-based stop
+```bash
+cd /home/pi
+git clone <your-repo-url> trading
+cd trading
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### Strategy Rules
-1. **Single trade per day** - No re-entries once stopped out
-2. **Trend alignment** - Only trade in direction of 50-EMA trend
-3. **Range-based stops** - Stop loss at opposite end of opening range
-4. **2:1 Risk/Reward** - Take profit at 2x range size
-5. **Market hours only** - No extended hours trading
-6. **Fractional shares** - Precise position sizing
+### 3. Configure environment
 
-## 📈 Performance Tracking
+```bash
+cp .env.template .env
+nano .env  # Add your Alpaca API keys
+```
 
-The system automatically generates comprehensive trading analytics:
+Required variables:
+- `ALPACA_API_KEY` — Your Alpaca API key
+- `ALPACA_SECRET_KEY` — Your Alpaca secret key
+- `SECRET_KEY` — Random string for Flask sessions
 
-- **Portfolio value tracking** over time
-- **Trade execution visualization** with action markers
-- **Buying power monitoring**
-- **Return calculations** and statistics
-- **Trade frequency analysis**
+### 4. Test run
 
-## 🔒 Security & Risk Management
+```bash
+source venv/bin/activate
+python3 webhook_server.py
+```
 
-- **API key encryption** in configuration files
-- **Real-time account monitoring** with balance checks
-- **Position size validation** before order execution
-- **Market hours verification** for order routing
-- **Day trading rule compliance** tracking
+Visit `http://<pi-ip>:5000/dashboard` from any device on your network.
 
-## 🧪 Testing & Validation
+### 5. Set up systemd (auto-start on boot)
 
-### Backtesting Results
-- Strategy tested on historical SPY data
-- Consistent performance during trending markets
-- Risk-adjusted returns optimized for 15-minute timeframe
+Create `/etc/systemd/system/trading-bot.service`:
 
-### Live Trading Metrics
-- Average trades per month: 15-20
-- Win rate: ~65% (based on backtest)
-- Risk-reward ratio: 2:1
-- Maximum drawdown: <5%
+```ini
+[Unit]
+Description=ORB Trading Bot
+After=network-online.target
+Wants=network-online.target
 
-## 🔧 Configuration Options
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/trading
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/home/pi/trading/venv/bin/python3 /home/pi/trading/webhook_server.py
+Restart=always
+RestartSec=10
 
-### Order Types Supported
-- **Market orders** (during market hours)
-- **Limit orders** (extended hours capability)
-- **Fractional shares** for precise sizing
-- **Time-in-force** options (GTC, DAY)
+[Install]
+WantedBy=multi-user.target
+```
 
-### Customizable Parameters
-- Position sizing percentage
-- Risk-reward ratios
-- Time zone adjustments
-- Extended hours trading
+Enable and start:
 
-## 📝 Logging & Monitoring
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable trading-bot
+sudo systemctl start trading-bot
+sudo systemctl status trading-bot   # Verify it's running
+```
 
-All trading activity is logged with:
-- Timestamp precision
-- Order execution details
-- Portfolio impact analysis
-- Buying power tracking
-- Performance metrics
+View logs:
+
+```bash
+journalctl -u trading-bot -f
+```
+
+## 📊 Strategy: Opening Range Breakout
+
+- **Opening range**: 6:30–6:45 AM Pacific (first 15 minutes)
+- **Entry**: Breakout above range high when price > 50-EMA
+- **Stop loss**: Opposite end of opening range
+- **Take profit**: 2× range size (2:1 R/R)
+- **Limit**: One trade per day
+- **Exit**: End-of-day close at 3:50 PM Pacific
+
+## 📡 API Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/dashboard` | GET | Web dashboard |
+| `/metrics` | GET | Strategy KPIs |
+| `/equity` | GET | Equity curve data |
+| `/trades_table` | GET | Detailed trades |
+| `/status` | GET | Account & system status |
+| `/health` | GET | Health check |
+
+## 🔒 Security
+
+- API key authentication for webhook endpoints
+- IP-based rate limiting and blocking
+- Login-protected dashboard
+- Environment variables for secrets (never hardcoded)
 
 ## 🚨 Disclaimer
 
-This system is for educational and demonstration purposes. Live trading involves substantial risk of loss. Always test thoroughly in paper trading environments before deploying real capital.
-
-## 📞 Contact
-
-**Developer**: Andre  
-**Email**: your.email@example.com  
-**LinkedIn**: [Your LinkedIn Profile]  
-**Portfolio**: [Your Portfolio Website]
-
----
-
-⭐ **Star this repository** if you found it helpful for your algorithmic trading projects!
+This system is for educational purposes. Live trading involves substantial risk of loss. Always test in paper trading first.

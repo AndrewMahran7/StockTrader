@@ -1731,35 +1731,14 @@ def check_strategy_active_from_log(session_id=None):
         return {'active': False, 'reason': f'Error: {str(e)}'}
 
 def get_deployment_config():
-    """Get configuration based on deployment environment"""
-    # Detect AWS environment
-    is_aws = any([
-        os.environ.get('AWS_EXECUTION_ENV'),
-        os.environ.get('AWS_LAMBDA_FUNCTION_NAME'),
-        os.environ.get('ECS_CONTAINER_METADATA_URI'),
-        os.path.exists('/opt/aws')
-    ])
-    
-    # Detect Docker environment
-    is_docker = os.path.exists('/.dockerenv')
-    
-    if is_aws or is_docker:
-        # Cloud/Container deployment
-        return {
-            'host': '0.0.0.0',  # Listen on all interfaces
-            'port': int(os.environ.get('PORT', 5000)),
-            'debug': False,
-            'threaded': True,
-            'use_reloader': False
-        }
-    else:
-        # Local development
-        return {
-            'host': 'localhost',
-            'port': 5000,
-            'debug': False,
-            'use_reloader': False
-        }
+    """Get configuration for Raspberry Pi deployment"""
+    return {
+        'host': '0.0.0.0',
+        'port': int(os.environ.get('PORT', 5000)),
+        'debug': False,
+        'threaded': True,
+        'use_reloader': False
+    }
 
 def setup_logging():
     """Setup production-ready logging"""
