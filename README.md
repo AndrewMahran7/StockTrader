@@ -50,14 +50,101 @@ An automated trading bot implementing a **15-minute Opening Range Breakout (ORB)
 
 ssh amahran@100.64.180.1
 
-### 1. Install system dependencies
+### 1. Set a static IP address
+
+This ensures the Pi always has the same address on your network, so you can reliably reach the dashboard.
+
+You can find the values you need from the command line on the Raspberry Pi.
+
+Check the current IP and subnet:
+
+```bash
+ip -4 addr show wlan0
+```
+
+Check the default gateway:
+
+```bash
+ip route | grep default
+```
+
+Check the current DNS servers:
+
+```bash
+grep '^nameserver' /etc/resolv.conf
+```
+
+Typical output will give you the values to reuse:
+
+- `inet 192.168.1.23/24` means your Pi is on the `192.168.1.x` network with `/24` subnet mask
+- `default via 192.168.1.1` means your router is `192.168.1.1`
+- `nameserver 192.168.1.1` or `nameserver 8.8.8.8` are your DNS servers
+
+Pick an unused address on the same subnet for the static IP. Avoid an address already assigned by your router.
+
+On newer Raspberry Pi OS installs, NetworkManager usually manages Wi-Fi. Check the connection name:
+
+```bash
+nmcli con show
+```
+
+If your active Wi-Fi connection is `ResWiFi`, set a static IP like this:
+
+```bash
+sudo nmcli con mod "ResWiFi" \
+       ipv4.addresses 100.64.185.32/20 \
+       ipv4.gateway 100.64.176.1 \
+       ipv4.dns "128.114.129.33" \
+       ipv4.method manual
+
+sudo nmcli con up "ResWiFi"
+```
+
+If you want to use a different address, replace only `100.64.185.32/20` with another unused address on the same subnet.
+
+Verify with:
+
+```bash
+ip -4 addr show wlan0
+ip route | grep default
+nmcli dev show wlan0 | grep IP4
+```
+
+If your Pi uses `dhcpcd` instead of NetworkManager, use `/etc/dhcpcd.conf` instead:
+
+```bash
+sudo nano /etc/dhcpcd.conf
+```
+
+Add:
+
+```conf
+interface wlan0
+static ip_address=<unused-ip-on-your-subnet>/20
+static routers=100.64.176.1
+static domain_name_servers=128.114.129.33
+```
+
+Then reboot:
+
+```bash
+sudo reboot
+```
+
+Verify with:
+
+```bash
+ip -4 addr show wlan0
+```
+
+### 2. Install system dependencies
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y python3-pip python3-venv libxml2-dev libxslt-dev libfreetype6-dev libpng-dev
 ```
 
-### 2. Clone and set up
+### 3. Clone and set up
 
 ```bash
 cd /home/pi
@@ -68,7 +155,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment
+### 4. Configure environment
 
 ```bash
 cp .env.template .env
@@ -80,7 +167,7 @@ Required variables:
 - `ALPACA_SECRET_KEY` — Your Alpaca secret key
 - `SECRET_KEY` — Random string for Flask sessions
 
-### 4. Test run
+### 5. Test run
 
 ```bash
 source venv/bin/activate
@@ -89,7 +176,7 @@ python3 webhook_server.py
 
 Visit `http://<pi-ip>:5000/dashboard` from any device on your network.
 
-### 5. Set up systemd (auto-start on boot)
+### 6. Set up systemd (auto-start on boot)
 
 Create `/etc/systemd/system/trading-bot.service`:
 

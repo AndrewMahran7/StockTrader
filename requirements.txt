@@ -9,8 +9,6 @@ websocket-client==1.6.3
 
 # Alternative Data Sources (for free market data)
 yfinance==0.2.22
-beautifulsoup4==4.12.2
-lxml==4.9.3
 
 # Data Processing and Analytics
 pandas>=2.0.0,<2.2.0

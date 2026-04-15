@@ -394,6 +394,9 @@
     </div>
 
     <div class="container">
+        <!-- Data Source Error Banner -->
+        <div id="dataSourceError" style="display: none; margin-top: 16px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4); border-radius: var(--radius-lg); padding: 14px 20px; color: var(--red);"></div>
+
         <!-- Position Status -->
         <div class="position-banner-wrap">
             <div class="position-banner-card" id="positionStatus">
@@ -497,12 +500,48 @@
             yaxis: { gridcolor: '#1e293b', zeroline: false }
         };
 
+        // --- Data Source Error Banner ---
+        function renderDataSourceError(data) {
+            const banner = document.getElementById('dataSourceError');
+            if (!banner) return;
+            
+            if (data && data.data_source_error) {
+                const err = data.data_source_error;
+                banner.style.display = 'block';
+                banner.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.3rem;">⚠️</span>
+                        <div>
+                            <div style="font-weight: 600;">Data Source Error</div>
+                            <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">
+                                ${err.error}
+                                ${err.timestamp ? ` &mdash; ${new Date(err.timestamp).toLocaleTimeString()}` : ''}
+                            </div>
+                        </div>
+                    </div>`;
+            } else if (data && data.error && data.current_price === null) {
+                banner.style.display = 'block';
+                banner.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.3rem;">❌</span>
+                        <div>
+                            <div style="font-weight: 600;">Price Data Unavailable</div>
+                            <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">${data.error}</div>
+                        </div>
+                    </div>`;
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+
         // --- Position Status ---
         async function loadPositionStatus() {
             try {
                 const res = await fetch('/position_status');
                 const data = await res.json();
                 const el = document.getElementById('positionStatus');
+
+                renderDataSourceError(data);
 
                 if (data.error) { el.innerHTML = `<div class="error">${data.error}</div>`; return; }
 
@@ -520,7 +559,7 @@
                             <div class="info-row"><span class="info-label">Unrealized P&L</span><span class="info-value ${p.unrealized_pnl >= 0 ? 'positive' : 'negative'}">$${p.unrealized_pnl.toFixed(2)} (${p.unrealized_pnl_percent.toFixed(1)}%)</span></div>
                         </div>
                         <div class="position-center">
-                            <div class="current-price">$${data.current_price.toFixed(2)}</div>
+                            <div class="current-price">${data.current_price ? '$' + data.current_price.toFixed(2) : 'N/A'}</div>
                             <div class="metric-label">TSLA Price</div>
                             ${data.opening_range && data.opening_range.high ? `
                                 <div style="margin-top: 16px;">
@@ -555,7 +594,7 @@
                             </div>` : ''}
                         </div>
                         <div class="position-center">
-                            <div class="current-price">$${data.current_price.toFixed(2)}</div>
+                            <div class="current-price">${data.current_price ? '$' + data.current_price.toFixed(2) : 'N/A'}</div>
                             <div class="metric-label">TSLA Price</div>
                             ${data.opening_range && data.opening_range.high ? `
                                 <div style="margin-top: 16px;">
@@ -593,7 +632,11 @@
                 const res = await fetch('/metrics');
                 const m = await res.json();
                 const el = document.getElementById('metricsGrid');
-                if (m.error) { el.innerHTML = `<div class="error">${m.error}</div>`; return; }
+
+                renderDataSourceError(m);
+
+                if (m.error && m.current_tsla_price === null) { el.innerHTML = `<div class="error">${m.error}</div>`; return; }
+                if (m.error && !m.current_tsla_price) { el.innerHTML = `<div class="error">${m.error}</div>`; return; }
 
                 el.innerHTML = `
                     <div class="metric-card">
@@ -628,8 +671,8 @@
                     </div>
                     <div class="metric-card">
                         <div class="metric-label">TSLA Price</div>
-                        <div class="metric-value neutral">$${(m.current_tsla_price||0).toFixed(2)}</div>
-                        <div class="metric-sub ${(m.tsla_change_percent||0) >= 0 ? 'positive' : 'negative'}">${(m.tsla_change_percent||0) >= 0 ? '+' : ''}${(m.tsla_change_percent||0).toFixed(1)}% from start</div>
+                        <div class="metric-value ${m.current_tsla_price ? 'neutral' : 'negative'}">${m.current_tsla_price ? '$' + m.current_tsla_price.toFixed(2) : 'N/A'}</div>
+                        <div class="metric-sub ${(m.tsla_change_percent||0) >= 0 ? 'positive' : 'negative'}">${m.current_tsla_price ? ((m.tsla_change_percent||0) >= 0 ? '+' : '') + (m.tsla_change_percent||0).toFixed(1) + '% from start' : 'Data unavailable'}</div>
                     </div>`;
             } catch (e) {
                 document.getElementById('metricsGrid').innerHTML = `<div class="error">${e.message}</div>`;

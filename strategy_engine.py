@@ -88,18 +88,19 @@ class ORBStrategy:
         self.opening_high = None
         self.opening_low = None
         self.range_set = False
-        self.trade_taken = False
         
-        # IMPORTANT: Only reset tp/sl/entry if we DON'T have an open position
-        # If we have a position, preserve the original stop loss and target!
+        # IMPORTANT: Only reset tp/sl/entry/trade_taken if we DON'T have an open position
+        # If we have a position, preserve the original stop loss, target, and trade_taken flag!
         if not has_open_position:
+            self.trade_taken = False
             self.entry_price = None
             self.tp = None
             self.sl = None
             self.position_id = None
             print(f"✅ Reset all levels for new day (no open position)")
         else:
-            # Keep the position details from entry day
+            # Keep trade_taken=True so exit logic continues to run
+            self.trade_taken = True
             print(f"⚠️ Open position detected - preserving TP=${self.tp:.2f} and SL=${self.sl:.2f} from entry")
             print(f"   Entry: ${self.entry_price:.2f} | Position will use ORIGINAL levels, not today's OR")
         

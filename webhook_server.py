@@ -20,7 +20,7 @@ from secure_config import Config, create_env_file
 # Import our strategy components
 from strategy_engine import ORBStrategy
 from data_stream import DataStream, BacktestDataProvider
-from backup_data_provider import get_tsla_price_with_fallback, get_tsla_historical_data
+from backup_data_provider import get_tsla_price_with_fallback, get_tsla_historical_data, get_data_source_error
 
 app = Flask(__name__)
 
@@ -62,7 +62,7 @@ def get_cached_tsla_price():
     if price_cache['price'] is not None:
         return price_cache['price']
     
-    return 395.94  # Final fallback
+    return None  # No fallback - UI will show error
 
 # Configure logging
 logging.basicConfig(
@@ -675,11 +675,28 @@ def get_metrics():
         
         # Use cached price to ensure consistency across dashboard refresh
         current_tsla_price = get_cached_tsla_price()
-            
-        # Use Yahoo Finance/backup price as it's more accurate than Alpaca free tier
-        print(f"� Using Yahoo Finance TSLA price: ${current_tsla_price:.2f}")
         
-        # Note: Alpaca free tier quotes can be delayed, so we prioritize Yahoo Finance
+        # Check for data source errors
+        data_error = get_data_source_error()
+        
+        if current_tsla_price is None:
+            return jsonify({
+                'error': 'Price data unavailable',
+                'data_source_error': data_error,
+                'total_trades': 0,
+                'win_rate': 0,
+                'total_pnl': 0,
+                'total_pnl_percent': 0,
+                'profit_factor': 0,
+                'max_drawdown': 0,
+                'sharpe_ratio': 0,
+                'current_tsla_price': None,
+                'tsla_change_percent': 0,
+                'account_balance': 0
+            })
+            
+        print(f"📊 Using TSLA price: ${current_tsla_price:.2f}")
+        
         if not is_market_open():
             print("🕐 Market closed - using cached/backup price data")
             
@@ -709,6 +726,7 @@ def get_metrics():
                 
             # Add TSLA price info
             metrics['current_tsla_price'] = current_tsla_price
+            metrics['data_source_error'] = data_error
             metrics['tsla_change_percent'] = ((current_tsla_price - first_trade_price) / first_trade_price) * 100
             
             # Calculate percentage gain from initial capital (including deposits)
@@ -855,6 +873,17 @@ def get_position_status():
         # Get current TSLA price (cached for consistency)
         current_price = get_cached_tsla_price()
         
+        # Check for data source errors
+        data_error = get_data_source_error()
+        
+        if current_price is None:
+            return jsonify({
+                'error': 'Price data unavailable - Yahoo Finance and Alpaca are both unreachable',
+                'data_source_error': data_error,
+                'current_price': None,
+                'has_position': False
+            })
+        
         # Initialize response data
         response_data = {
             'current_price': current_price,
@@ -863,6 +892,7 @@ def get_position_status():
             'opening_range': {},
             'entry_signals': {},
             'strategy_status': 'No Strategy Active',
+            'data_source_error': data_error,
             'last_updated': datetime.now().isoformat()
         }
         
